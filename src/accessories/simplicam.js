@@ -356,7 +356,7 @@ class SS3SimpliCam {
                     let videoBitrate = this.cameraDetails.cameraSettings.admin.bitRate;
                     let audioBitrate = request.audio.max_bit_rate ?? 96;
                     let audioSamplerate = request.audio.sample_rate ?? 16;
-                    let mtu = request.video.mtu ?? 1316;
+                    let mtu = 188 * 3; //request.video.mtu ?? 1316;
 
                     if (request.video.fps < fps) {
                         fps = request.video.fps;
@@ -378,20 +378,21 @@ class SS3SimpliCam {
                     }
 
                     let sourceArgs = [
-                        ['-re'],
+                        ['-hide_banner'],
+                        // ['-rtsp_transport', 'tcp'],
                         ['-headers', `Authorization: Bearer ${this.simplisafe.token}`],
                         ['-i', `https://${this.serverIpAddress}/v1/${this.cameraDetails.uuid}/flv?x=${width}&audioEncoding=AAC`]
                     ];
 
                     let videoArgs = [
                         ['-map', '0:0'],
-                        ['-vcodec', 'libx264'],
-                        ['-tune', 'zerolatency'],
-                        ['-preset', 'superfast'],
+                        ['-vcodec', 'copy'],
+                        // ['-tune', 'zerolatency'],
+                        // ['-preset', 'superfast'],
+                        ['-f', 'rawvideo'],
                         ['-pix_fmt', 'yuv420p'],
                         ['-r', fps],
-                        ['-f', 'rawvideo'],
-                        ['-vf', `scale=${width}:-2`],
+                        // ['-vf', `scale=${width}:-2`],
                         ['-b:v', `${videoBitrate}k`],
                         ['-bufsize', `${2*videoBitrate}k`],
                         ['-maxrate', `${videoBitrate}k`],
@@ -427,25 +428,25 @@ class SS3SimpliCam {
                         vFilterArg[1] = `scale=${width}:-2`;
                     }
 
-                    if (request.audio && request.audio.codec == 'OPUS') {
-                        // Request is for OPUS codec, serve that
-                        let iArg = sourceArgs.find(arg => arg[0] == '-i');
-                        iArg[1] = iArg[1].replace('&audioEncoding=AAC', '');
-                        let aCodecArg = audioArgs.find(arg => arg[0] == '-acodec');
-                        aCodecArg[1] = 'libopus';
-                        let profileArg = audioArgs.find(arg => arg[0] == '-profile:a');
-                        audioArgs.splice(audioArgs.indexOf(profileArg), 1);
-                    }
+                    // if (request.audio && request.audio.codec == 'OPUS') {
+                    //     // Request is for OPUS codec, serve that
+                    //     let iArg = sourceArgs.find(arg => arg[0] == '-i');
+                    //     iArg[1] = iArg[1].replace('&audioEncoding=AAC', '');
+                    //     let aCodecArg = audioArgs.find(arg => arg[0] == '-acodec');
+                    //     aCodecArg[1] = 'libopus';
+                    //     let profileArg = audioArgs.find(arg => arg[0] == '-profile:a');
+                    //     audioArgs.splice(audioArgs.indexOf(profileArg), 1);
+                    // }
 
                     if (this.cameraOptions) {
-                        if (this.cameraOptions.enableHwaccelRpi) {
-                            let iArg = sourceArgs.find(arg => arg[0] == '-i');
-                            sourceArgs.splice(sourceArgs.indexOf(iArg), 0, ['-vcodec', 'h264_mmal']);
-                            let vCodecArg = videoArgs.find(arg => arg[0] == '-vcodec');
-                            vCodecArg[1] = 'h264_omx';
-                            videoArgs = videoArgs.filter(arg => arg[0] !== '-tune');
-                            videoArgs = videoArgs.filter(arg => arg[0] !== '-preset');
-                        }
+                        // if (this.cameraOptions.enableHwaccelRpi) {
+                        //     let iArg = sourceArgs.find(arg => arg[0] == '-i');
+                        //     sourceArgs.splice(sourceArgs.indexOf(iArg), 0, ['-vcodec', 'h264_mmal']);
+                        //     let vCodecArg = videoArgs.find(arg => arg[0] == '-vcodec');
+                        //     vCodecArg[1] = 'h264_omx';
+                        //     videoArgs = videoArgs.filter(arg => arg[0] !== '-tune');
+                        //     videoArgs = videoArgs.filter(arg => arg[0] !== '-preset');
+                        // }
 
                         if (this.cameraOptions.sourceOptions) {
                             let options = (typeof this.cameraOptions.sourceOptions === 'string') ? Object.fromEntries(this.cameraOptions.sourceOptions.split('-').filter(x => x).map(arg => '-' + arg).map(a => a.split(' ').filter(x => x)))
@@ -509,7 +510,7 @@ class SS3SimpliCam {
                     let cmd = spawn(this.ffmpegPath, [
                         ...source,
                         ...video,
-                        ...audio
+                        // ...audio
                     ], {
                         env: process.env
                     });
