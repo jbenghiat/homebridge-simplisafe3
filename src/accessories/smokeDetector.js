@@ -13,6 +13,7 @@ class SS3SmokeDetector {
         this.reachable = true;
 
         this.startListening();
+		this.version = simplisafe.version;
     }
 
     identify(callback) {
@@ -55,7 +56,7 @@ class SS3SmokeDetector {
                 if (sensor.flags) {
                     this.reachable = !sensor.flags.offline;
                 } else {
-                    this.reachable = false;
+          			this.reachable = sensor.sensorStatus && sensor.sensorStatus != 31;
                 }
             }
 
@@ -172,15 +173,15 @@ class SS3SmokeDetector {
         if (this.debug) this.log.debug('Refreshing sensor state');
         try {
             let sensor = await this.getSensorInformation();
-            if (!sensor.status || !sensor.flags) {
-                throw new Error('Sensor response not understood');
-            }
+			if (this.version == 2 ? !sensor.sensorData && !sensor.sensorStatus && !sensor.sensorStatus==0 : !sensor.status || !sensor.flags) {
+				throw new Error(`Sensor response not understood ${sensor.name}`);
+			}
 
-            let homekitTriggeredState = sensor.status.triggered ? this.Characteristic.SmokeDetected.SMOKE_DETECTED : this.Characteristic.SmokeDetected.SMOKE_NOT_DETECTED;
-            let homekitTamperState = sensor.status.tamper ? this.Characteristic.StatusTampered.TAMPERED : this.Characteristic.StatusTampered.NOT_TAMPERED;
-            let homekitFaultState = sensor.status.malfunction ? this.Characteristic.StatusFault.GENERAL_FAULT : this.Characteristic.StatusFault.NO_FAULT;
-
-            let batteryLow = sensor.flags.lowBattery;
+			let triggered = this.version == 2 ? false : sensor.status.triggered; 
+			let homekitTriggeredState = triggered ? this.Characteristic.SmokeDetected.SMOKE_DETECTED : this.Characteristic.SmokeDetected.SMOKE_NOT_DETECTED;
+			let homekitTamperState = this.version == 2 ? false : sensor.status.tamper ? this.Characteristic.StatusTampered.TAMPERED : this.Characteristic.StatusTampered.NOT_TAMPERED;
+			let homekitFaultState = this.version == 2 ? false : sensor.status.malfunction ? this.Characteristic.StatusFault.GENERAL_FAULT : this.Characteristic.StatusFault.NO_FAULT;
+			let batteryLow = this.version == 2 ? 1 == (1 & sensor.sensorData) : sensor.flags.lowBattery;
             let homekitBatteryState = batteryLow ? this.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW : this.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL;
 
             this.service.updateCharacteristic(this.Characteristic.SmokeDetected, homekitTriggeredState);

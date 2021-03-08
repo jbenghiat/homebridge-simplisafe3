@@ -13,6 +13,7 @@ class SS3EntrySensor {
         this.reachable = true;
 
         this.startListening();
+		this.version = simplisafe.version;
     }
 
     identify(callback) {
@@ -46,8 +47,8 @@ class SS3EntrySensor {
             if (!sensor) {
                 this.reachable = false;
             } else {
-                if (sensor.flags) {
-                    this.reachable = !sensor.flags.offline;
+			if (this.version == 2 ? sensor.sensorStatus : sensor.flags) {
+			  this.reachable = this.version == 2 ? sensor.sensorStatus > 0 : !sensor.flags.offline;
                 } else {
                     this.reachable = false;
                 }
@@ -88,11 +89,11 @@ class SS3EntrySensor {
         try {
             let sensor = await this.getSensorInformation();
 
-            if (!sensor.status) {
+		   if (this.version == 2 ? !sensor.entryStatus : !sensor.status) {
                 throw new Error('Sensor response not understood');
             }
 
-            let open = sensor.status.triggered;
+		    let open = this.version == 2 ? sensor.entryStatus == "open" : sensor.status.triggered;
             let homekitState = open ? this.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED : this.Characteristic.ContactSensorState.CONTACT_DETECTED;
             callback(null, homekitState);
 
@@ -110,16 +111,16 @@ class SS3EntrySensor {
     startListening() {
         this.simplisafe.subscribeToSensor(this.id, sensor => {
             if (this.service) {
-                if (sensor.status) {
-                    if (sensor.status.triggered) {
+			if (sensor.status || sensor.entryStatus) {
+			  if (this.version == 2 ? sensor.entryStatus == "open" : sensor.status.triggered) {
                         this.service.updateCharacteristic(this.Characteristic.ContactSensorState, this.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED);
                     } else {
                         this.service.updateCharacteristic(this.Characteristic.ContactSensorState, this.Characteristic.ContactSensorState.CONTACT_DETECTED);
                     }
                 }
 
-                if (sensor.flags) {
-                    if (sensor.flags.lowBattery) {
+				if (sensor.flags || sensor.error) {
+				    if (sensor.flags.lowBattery || sensor.error) {
                         this.service.updateCharacteristic(this.Characteristic.StatusLowBattery, this.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW);
                     } else {
                         this.service.updateCharacteristic(this.Characteristic.StatusLowBattery, this.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL);
@@ -133,14 +134,13 @@ class SS3EntrySensor {
         if (this.debug) this.log.debug('Refreshing sensor state');
         try {
             let sensor = await this.getSensorInformation();
-            if (!sensor.status || !sensor.flags) {
-                throw new Error('Sensor response not understood');
-            }
-
-            let open = sensor.status.triggered;
+		    if (this.version == 2 ? !sensor.sensorStatus && !sensor.sensorData : (!sensor.status || !sensor.flags) ) {
+				if (this.debug) this.log.debug(`${sensor}`);
+				throw new Error(`Sensor ${this.name} response not understood`);
+		    }
+		    let open = this.version == 2 ? sensor.entryStatus != "closed" : sensor.status.triggered;
             let homekitSensorState = open ? this.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED : this.Characteristic.ContactSensorState.CONTACT_DETECTED;
-
-            let batteryLow = sensor.flags.lowBattery;
+		    let batteryLow = this.version == 2 ? sensor.error : sensor.flags.lowBattery;
             let homekitBatteryState = batteryLow ? this.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW : this.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL;
 
             this.service.updateCharacteristic(this.Characteristic.ContactSensorState, homekitSensorState);

@@ -37,12 +37,14 @@ class SS3Platform {
         this.unreachableAccessories = [];
 
         let refreshInterval = 15000;
+		this.version = config.version || 3;
+
         if (config.sensorRefresh) {
             refreshInterval = config.sensorRefresh * 1000;
         }
 
 
-        this.simplisafe = new SimpliSafe3(refreshInterval, this.resetId, this.api.user.storagePath(), log, this.debug);
+        this.simplisafe = new SimpliSafe3(refreshInterval, this.resetId, this.api.user.storagePath(), log, this.debug, this.version);
 
         if (config.subscriptionId) {
             if (this.debug) this.log.debug(`Specifying account number: ${config.subscriptionId}`);
@@ -354,10 +356,12 @@ class SS3Platform {
                         }
                     }
                 } else {
-                    this.log.warn(`Sensor not (yet) supported: ${sensor.name}`);
-                    this.log.warn(sensor);
-                }
-            }
+			if ( sensor.type ) {
+				this.log.warn(`Sensor not (yet) supported: ${sensor.name}`);
+					this.log.warn(sensor);
+					}
+				}
+ 		  	}
 
             let locks = await this.simplisafe.getLocks();
             for (let lock of locks) {

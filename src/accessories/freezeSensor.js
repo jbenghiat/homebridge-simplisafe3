@@ -15,6 +15,7 @@ class SS3FreezeSensor {
         this.reachable = true;
 
         this.startListening();
+		this.version = simplisafe.version;
     }
 
     identify(callback) {
@@ -51,7 +52,7 @@ class SS3FreezeSensor {
                 if (sensor.flags) {
                     this.reachable = !sensor.flags.offline;
                 } else {
-                    this.reachable = false;
+					this.reachable = sensor.sensorStatus && sensor.sensorStatus != 31;
                 }
             }
 
@@ -90,11 +91,11 @@ class SS3FreezeSensor {
         try {
             let sensor = await this.getSensorInformation();
 
-            if (!sensor.status) {
+      		if (!sensor.status && !sensor.sensorStatus) {
                 throw new Error('Sensor response not understood');
             }
 
-            let temperature = fahrenheitToCelsius(sensor.status.temperature);
+      		let temperature = this.version == 2 ? fahrenheitToCelsius(sensor.temp) : fahrenheitToCelsius(sensor.status.temperature);
             callback(null, temperature);
 
         } catch (err) {
@@ -114,7 +115,10 @@ class SS3FreezeSensor {
                 if (sensor.status) {
                     let temperature = fahrenheitToCelsius(sensor.status.temperature);
                     this.service.updateCharacteristic(this.Characteristic.CurrentTemperature, temperature);
-                }
+				} else if (sensor.sensorData) {
+					let temperature = this.version == 2 ? fahrenheitToCelsius(sensor.temp) : fahrenheitToCelsius(sensor.status.temperature);
+					this.service.updateCharacteristic(this.Characteristic.CurrentTemperature, temperature);
+				}
 
                 if (sensor.flags) {
                     if (sensor.flags.lowBattery) {
@@ -131,13 +135,13 @@ class SS3FreezeSensor {
         if (this.debug) this.log.debug('Refreshing sensor state');
         try {
             let sensor = await this.getSensorInformation();
-            if (!sensor.status || !sensor.flags) {
-                throw new Error('Sensor response not understood');
-            }
+      		if (this.version == 2 ? !sensor.sensorData && !sensor.sensorStatus : !sensor.status || !sensor.flags) {
+				throw new Error(`Sensor response not understood ${sensor.name}`);
+			}
 
-            let temperature = fahrenheitToCelsius(sensor.status.temperature);
-
-            let batteryLow = sensor.flags.lowBattery;
+      		let temperature = this.version == 2 ? fahrenheitToCelsius(sensor.temp) : fahrenheitToCelsius(sensor.status.temperature);
+      		
+		  	let batteryLow = this.version == 2 ? sensor.error : sensor.flags.lowBattery;
             let homekitBatteryState = batteryLow ? this.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW : this.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL;
 
             this.service.updateCharacteristic(this.Characteristic.CurrentTemperature, temperature);

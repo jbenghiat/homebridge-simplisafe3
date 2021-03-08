@@ -36,6 +36,7 @@ const validLockStates = [
 ];
 
 export const SENSOR_TYPES = {
+	'UNKNOWN' : -1,
     'APP': 0,
     'KEYPAD': 1,
     'KEYCHAIN': 2,
@@ -50,6 +51,7 @@ export const SENSOR_TYPES = {
     'SIREN': 11,
     'SIREN_2': 13,
     'DOORLOCK': 16,
+  	'PINPAD': 100,
     'DOORLOCK_2': 253
 };
 
@@ -128,12 +130,14 @@ class SimpliSafe3 {
     nextBlockInterval = rateLimitInitialInterval;
     nextAttempt = 0;
     loginAttempt;
+    version;
 
-    constructor(sensorRefreshTime = 15000, resetConfig = false, storagePath, log, debug) {
+    constructor(sensorRefreshTime = 15000, resetConfig = false, storagePath, log, debug, version = 3) {
         this.sensorRefreshTime = sensorRefreshTime;
         this.log = log || console.log;
         this.debug = debug;
         this.storagePath = storagePath;
+        this.version = version;
 
         let internalConfigFile = path.join(this.storagePath, internalConfigFileName);
         if (fs.existsSync(internalConfigFile) && resetConfig) {
@@ -515,7 +519,7 @@ class SimpliSafe3 {
             }
 
             const validStates = ['OFF', 'HOME', 'AWAY', 'AWAY_COUNT', 'HOME_COUNT', 'ALARM_COUNT', 'ALARM'];
-            let alarmState = subscription.location.system.alarmState;
+            let alarmState = subscription.location.system.alarmState.toUpperCase();
             if (!validStates.includes(alarmState)) {
                 if (!retry) {
                     let retriedState = await this.getAlarmState(true, true);
@@ -542,9 +546,14 @@ class SimpliSafe3 {
             await this.getSubscription();
         }
 
+		let url = `/ss3/subscriptions/${this.subId}/state/${state}`;
+		if (this.version == 2) {
+			url = `/subscriptions/${this.subId}/state?state=${state}`;
+		}
+	
         let data = await this.request({
             method: 'POST',
-            url: `/ss3/subscriptions/${this.subId}/state/${state}`
+		  url: url
         });
         this.handleSensorRefreshLockout();
         return data;
@@ -578,11 +587,14 @@ class SimpliSafe3 {
         }
 
         if (forceRefresh || !this.lastSensorRequest) {
+		  let url = `/ss3/subscriptions/${this.subId}/sensors?forceUpdate=${forceUpdate ? 'true' : 'false'}`;
+		  if (this.version == 2) {
+			url = `/subscriptions/${this.subId}/settings?cached=${forceUpdate ? 'true' : 'false'}&settingsType=sensors`;
+		  }
             this.lastSensorRequest = this.request({
                 method: 'GET',
-                url: `/ss3/subscriptions/${this.subId}/sensors?forceUpdate=${forceUpdate ? 'true' : 'false'}`
-            })
-                .then(data => {
+				url: url
+			}).then(data => {
                     return data;
                 })
                 .catch(err => {
@@ -596,6 +608,10 @@ class SimpliSafe3 {
         }
 
         let data = await this.lastSensorRequest;
+		if (this.version == 2) {
+			return data.settings.sensors;
+		}
+		else
         return data.sensors;
     }
 
@@ -740,9 +756,41 @@ class SimpliSafe3 {
                         case 9703:
                             callback(EVENT_TYPES.DOORLOCK_ERROR, data);
                             break;
+						case 1601:
+						  if (this.debug) this.log.debug('Test Signal Received:', data);
+						  break;			
                         case 1602:
                             // Automatic test
                             break;
+              
+						case 1604:
+							if (this.debug) this.log.debug('Sensor Test Received:', data);
+							break;
+			  
+						case 3110:
+						case 3154:
+						case 3159:
+						case 3162:
+							// Alarm stopped (smoke, water, freeze, CO)
+							this.log.warn('Alarm stopped');
+							break;
+			
+						case 1301:
+							this.log.warn('Power outage!');
+							break;
+			
+						case 3301:
+							this.log.warn('Power restored');
+							break;
+				
+						case 1344:
+							this.log.warn('system Interference Detected');
+							break;
+				
+						case 3344:
+							this.log.warn('system Interference Resolved');
+							break;
+
                         default:
                             // Unknown event
                             if (this.debug) this.log.debug('Unknown SSAPI event:', data);
